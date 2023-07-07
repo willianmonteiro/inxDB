@@ -4,7 +4,8 @@
   "description": "IndexedDB wrapper for handling offline database operations.",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "tsc",
+    "deploy": "build && npm publish" 
   },
   "author": "Willian Monteiro",
   "license": "MIT",
