@@ -3,7 +3,9 @@
     "target": "es6",
     "module": "commonjs",
     "outDir": "dist",
-    "strict": true
+    "strict": true,
+    "declaration": true,
+    "declarationDir": "dist",
   },
   "include": ["src"]
 }
