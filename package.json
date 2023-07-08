@@ -1,6 +1,6 @@
 {
   "name": "inxdb",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "IndexedDB wrapper for handling offline database operations.",
   "main": "index.js",
   "scripts": {

@@ -1,4 +1,4 @@
-import InxDB from './InxDB';
+import InxDB from './inxdb';
 import logger from './utils/logger';
 
 export function initializeDB(instance: InxDB): void {

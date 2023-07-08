@@ -1,2 +1,2 @@
-import InxDB from './InxDB';
+import InxDB from './inxdb';
 export declare function initializeDB(instance: InxDB): void;
