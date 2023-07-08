@@ -1,8 +1,9 @@
 {
   "name": "inxdb",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "IndexedDB wrapper for handling offline database operations.",
   "main": "index.js",
+  "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc",
     "deploy": "npm run build && npm publish" 
