@@ -275,7 +275,7 @@ export default class InxDB implements IInxDB {
 		});
 	}
 
-	public delete(): Promise<void> {
+	public async delete(): Promise<void> {
 		return new Promise((resolve, reject) => {
 			if (!this.collectionName) {
 				reject(new CollectionNotSpecifiedError());
@@ -288,26 +288,24 @@ export default class InxDB implements IInxDB {
 				return;
 			}
 	
+			let request: IDBRequest;
+	
 			if (this.docSelectionCriteria) {
-				const request: IDBRequest = objectStore.delete(this.docSelectionCriteria as IDBValidKey);
-				request.onsuccess = () => {
-					resolve();
-				};
-				request.onerror = (event: Event) => {
-					reject((event.target as IDBRequest).error);
-				};
+				request = objectStore.delete(this.docSelectionCriteria as IDBValidKey);
 			} else {
-				const request: IDBRequest = objectStore.clear();
-				request.onsuccess = () => {
-					resolve();
-				};
-				request.onerror = (event: Event) => {
-					reject((event.target as IDBRequest).error);
-				};
+				request = objectStore.clear();
 			}
+	
+			request.onsuccess = () => {
+				resolve();
+				this.docSelectionCriteria = null; // Reset the docSelectionCriteria
+			};
+	
+			request.onerror = (event: Event) => {
+				reject((event.target as IDBRequest).error);
+			};
 		});
 	}
-	
 }
 
 export interface IInxDB {
