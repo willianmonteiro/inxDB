@@ -1,6 +1,6 @@
 {
   "name": "inxdb",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "IndexedDB wrapper for handling offline database operations.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
