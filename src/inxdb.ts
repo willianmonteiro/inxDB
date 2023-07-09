@@ -95,7 +95,12 @@ export default class InxDB implements IInxDB {
 				return;
 			}
 
-			const request: IDBRequest = objectStore.getAll();
+			let request: IDBRequest;
+			if (this.docSelectionCriteria) {
+				request = objectStore.get(this.docSelectionCriteria as IDBValidKey);
+			} else {
+				request = objectStore.getAll();
+			}
 
 			request.onsuccess = () => {
 				const result: any[] = options.keys ? request.result.map((data: any) => ({ key: data.key, data })) : request.result;
@@ -132,7 +137,6 @@ export default class InxDB implements IInxDB {
 
 			getRequest?.addEventListener('success', (event: Event) => {
 				const existingData: object | undefined = (event.target as IDBRequest).result;
-
 				if (existingData) {
 					// Key already exists, update the existing object
 					const updateRequest: IDBRequest = objectStore.put(data);
@@ -234,7 +238,7 @@ export default class InxDB implements IInxDB {
 		});
 	}
 
-	public async set<TData>(newDocument: TData[], options = { keys: false }): Promise<void> {
+	public async set<TData>(newDocument: (TData & { id: number, _key?: string })[], options = { keys: false }): Promise<void> {
 		return new Promise((resolve, reject) => {
 			if (!this.collectionName) {
 				reject(new CollectionNotSpecifiedError());
@@ -308,6 +312,6 @@ export interface IInxDB {
   get<TData>(options?: { keys?: boolean }): Promise<TData[]>;
   add<TData>(data: TData, key?: string): Promise<TData>;
   update<TData>(docUpdates: TData): Promise<TData>;
-  set<TData>(newDocument: TData[], options?: { keys?: boolean }): Promise<void>;
+  set<TData>(newDocument: (TData & { id: number, _key?: string })[], options?: { keys?: boolean }): Promise<void>;
   delete(): Promise<void>;
 }
