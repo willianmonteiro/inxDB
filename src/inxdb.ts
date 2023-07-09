@@ -275,35 +275,39 @@ export default class InxDB implements IInxDB {
 		});
 	}
 
-	public async delete(): Promise<void> {
+	public delete(): Promise<void> {
 		return new Promise((resolve, reject) => {
 			if (!this.collectionName) {
 				reject(new CollectionNotSpecifiedError());
 				return;
 			}
-
-			if (!this.docSelectionCriteria) {
-				reject(new DocumentCriteriaError());
-				return;
-			}
-
+	
 			const objectStore: IDBObjectStore | null = this.getObjectStore(this.collectionName, 'readwrite');
 			if (!objectStore) {
 				reject(new CollectionNotFoundError(this.collectionName));
 				return;
 			}
-
-			const request: IDBRequest = objectStore.delete(this.docSelectionCriteria as IDBValidKey);
-
-			request.onsuccess = () => {
-				resolve();
-			};
-
-			request.onerror = (event: Event) => {
-				reject((event.target as IDBRequest).error);
-			};
+	
+			if (this.docSelectionCriteria) {
+				const request: IDBRequest = objectStore.delete(this.docSelectionCriteria as IDBValidKey);
+				request.onsuccess = () => {
+					resolve();
+				};
+				request.onerror = (event: Event) => {
+					reject((event.target as IDBRequest).error);
+				};
+			} else {
+				const request: IDBRequest = objectStore.clear();
+				request.onsuccess = () => {
+					resolve();
+				};
+				request.onerror = (event: Event) => {
+					reject((event.target as IDBRequest).error);
+				};
+			}
 		});
 	}
+	
 }
 
 export interface IInxDB {
