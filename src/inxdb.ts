@@ -108,7 +108,7 @@ export default class InxDB implements IInxDB {
 		});
 	}
 
-	public async add<TData>(data: TData, key?: string): Promise<TData> {
+	public async add<TData>(data: TData & { id: number }, key?: string): Promise<TData> {
 		return new Promise((resolve, reject) => {
 			if (!this.collectionName) {
 				reject(new CollectionNotSpecifiedError());
@@ -128,7 +128,7 @@ export default class InxDB implements IInxDB {
 				return;
 			}
 
-			const getRequest: IDBRequest | null = key ? objectStore.get(key) : null;
+			const getRequest: IDBRequest | null = key ? objectStore.get(key) : objectStore.get(data?.id);
 
 			getRequest?.addEventListener('success', (event: Event) => {
 				const existingData: object | undefined = (event.target as IDBRequest).result;
