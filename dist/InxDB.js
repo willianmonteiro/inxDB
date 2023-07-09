@@ -85,7 +85,13 @@ class InxDB {
                     reject(new errors_1.CollectionNotFoundError());
                     return;
                 }
-                const request = objectStore.getAll();
+                let request;
+                if (this.docSelectionCriteria) {
+                    request = objectStore.get(this.docSelectionCriteria);
+                }
+                else {
+                    request = objectStore.getAll();
+                }
                 request.onsuccess = () => {
                     const result = options.keys ? request.result.map((data) => ({ key: data.key, data })) : request.result;
                     resolve(result);
@@ -114,7 +120,7 @@ class InxDB {
                     reject(new Error('Add operation cannot be performed due to user errors.'));
                     return;
                 }
-                const getRequest = key ? objectStore.get(key) : null;
+                const getRequest = key ? objectStore.get(key) : objectStore.get(data === null || data === void 0 ? void 0 : data.id);
                 getRequest === null || getRequest === void 0 ? void 0 : getRequest.addEventListener('success', (event) => {
                     const existingData = event.target.result;
                     if (existingData) {
