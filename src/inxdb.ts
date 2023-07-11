@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/ban-ts-comment */
 /* eslint-disable max-lines */
 
 import { getCollection } from './collection';
@@ -96,15 +97,25 @@ export default class InxDB implements IInxDB {
 			}
 
 			let request: IDBRequest;
-			if (this.docSelectionCriteria) {
+			// filter document by key
+			if (this?.docSelectionCriteria && ['string', 'number'].includes(typeof this?.docSelectionCriteria)) {
 				request = objectStore.get(this.docSelectionCriteria as IDBValidKey);
 			} else {
 				request = objectStore.getAll();
 			}
 
 			request.onsuccess = () => {
-				const result: any[] = options.keys ? request.result.map((data: any) => ({ key: data.key, data })) : request.result;
+				let result: any[] = [];
+				// filter by criteria
+				if (this?.docSelectionCriteria && typeof this?.docSelectionCriteria === 'object') {
+					result = request.result.filter((doc: TData) => {
+						// @ts-ignore
+						return Object.entries(this.docSelectionCriteria).every(([ key, value ]) => doc?.[key] === value);
+					});
+				}
+				result = options.keys ? result.map((data: any) => ({ key: data.key, data })) : result;
 				resolve(result);
+				this.docSelectionCriteria = null; // Reset the docSelectionCriteria
 			};
 
 			request.onerror = (event: Event) => {
@@ -113,7 +124,7 @@ export default class InxDB implements IInxDB {
 		});
 	}
 
-	public async add<TData>(data: TData & { id: number }, key?: string): Promise<TData> {
+	public async add<TData>(data: TData & { id?: number }, key?: string): Promise<TData> {
 		return new Promise((resolve, reject) => {
 			if (!this.collectionName) {
 				reject(new CollectionNotSpecifiedError());
@@ -133,7 +144,9 @@ export default class InxDB implements IInxDB {
 				return;
 			}
 
-			const getRequest: IDBRequest | null = key ? objectStore.get(key) : objectStore.get(data?.id);
+			const getRequest: IDBRequest | null = key 
+				? objectStore.get(key) 
+				: data?.id ? objectStore.get(data?.id) : null;
 
 			getRequest?.addEventListener('success', (event: Event) => {
 				const existingData: object | undefined = (event.target as IDBRequest).result;
@@ -238,7 +251,7 @@ export default class InxDB implements IInxDB {
 		});
 	}
 
-	public async set<TData>(newDocument: (TData & { id: number, _key?: string })[], options = { keys: false }): Promise<void> {
+	public async set<TData>(newDocument: (TData & { id?: number, _key?: string })[], options = { keys: false }): Promise<void> {
 		return new Promise((resolve, reject) => {
 			if (!this.collectionName) {
 				reject(new CollectionNotSpecifiedError());
@@ -312,8 +325,8 @@ export interface IInxDB {
   collection(collectionName: string): InxDB;
   doc(docSelectionCriteria: string | object): InxDB;
   get<TData>(options?: { keys?: boolean }): Promise<TData[]>;
-  add<TData>(data: TData, key?: string): Promise<TData>;
+  add<TData>(data: TData & { id?: string | number }, key?: string): Promise<TData>;
   update<TData>(docUpdates: TData): Promise<TData>;
-  set<TData>(newDocument: (TData & { id: number, _key?: string })[], options?: { keys?: boolean }): Promise<void>;
+  set<TData>(newDocument: (TData & { id?: number, _key?: string })[], options?: { keys?: boolean }): Promise<void>;
   delete(): Promise<void>;
 }
