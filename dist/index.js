@@ -1,10 +1,4 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.createCollection = exports.getCollection = exports.initializeDB = void 0;
-const initialization_1 = require("./initialization");
-Object.defineProperty(exports, "initializeDB", { enumerable: true, get: function () { return initialization_1.initializeDB; } });
-const collection_1 = require("./collection");
-Object.defineProperty(exports, "createCollection", { enumerable: true, get: function () { return collection_1.createCollection; } });
-Object.defineProperty(exports, "getCollection", { enumerable: true, get: function () { return collection_1.getCollection; } });
 const inxdb_1 = require("./inxdb");
 exports.default = inxdb_1.default;

@@ -112,6 +112,8 @@ export default class InxDB implements IInxDB {
 						// @ts-ignore
 						return Object.entries(this.docSelectionCriteria).every(([ key, value ]) => doc?.[key] === value);
 					});
+				} else {
+					result = request.result;
 				}
 				result = options.keys ? result.map((data: any) => ({ key: data.key, data })) : result;
 				resolve(result);

@@ -19,11 +19,11 @@ export default class InxDB implements IInxDB {
         keys: boolean;
     }): Promise<TData[]>;
     add<TData>(data: TData & {
-        id: number;
+        id?: number;
     }, key?: string): Promise<TData>;
     update<TData>(docUpdates: TData): Promise<TData>;
     set<TData>(newDocument: (TData & {
-        id: number;
+        id?: number;
         _key?: string;
     })[], options?: {
         keys: boolean;
@@ -36,10 +36,12 @@ export interface IInxDB {
     get<TData>(options?: {
         keys?: boolean;
     }): Promise<TData[]>;
-    add<TData>(data: TData, key?: string): Promise<TData>;
+    add<TData>(data: TData & {
+        id?: string | number;
+    }, key?: string): Promise<TData>;
     update<TData>(docUpdates: TData): Promise<TData>;
     set<TData>(newDocument: (TData & {
-        id: number;
+        id?: number;
         _key?: string;
     })[], options?: {
         keys?: boolean;

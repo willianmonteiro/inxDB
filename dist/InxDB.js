@@ -1,4 +1,5 @@
 "use strict";
+/* eslint-disable @typescript-eslint/ban-ts-comment */
 /* eslint-disable max-lines */
 var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
     function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
@@ -86,15 +87,25 @@ class InxDB {
                     return;
                 }
                 let request;
-                if (this.docSelectionCriteria) {
+                // filter document by key
+                if ((this === null || this === void 0 ? void 0 : this.docSelectionCriteria) && ['string', 'number'].includes(typeof (this === null || this === void 0 ? void 0 : this.docSelectionCriteria))) {
                     request = objectStore.get(this.docSelectionCriteria);
                 }
                 else {
                     request = objectStore.getAll();
                 }
                 request.onsuccess = () => {
-                    const result = options.keys ? request.result.map((data) => ({ key: data.key, data })) : request.result;
+                    let result = [];
+                    // filter by criteria
+                    if ((this === null || this === void 0 ? void 0 : this.docSelectionCriteria) && typeof (this === null || this === void 0 ? void 0 : this.docSelectionCriteria) === 'object') {
+                        result = request.result.filter((doc) => {
+                            // @ts-ignore
+                            return Object.entries(this.docSelectionCriteria).every(([key, value]) => (doc === null || doc === void 0 ? void 0 : doc[key]) === value);
+                        });
+                    }
+                    result = options.keys ? result.map((data) => ({ key: data.key, data })) : result;
                     resolve(result);
+                    this.docSelectionCriteria = null; // Reset the docSelectionCriteria
                 };
                 request.onerror = (event) => {
                     reject(event.target.error);
@@ -120,7 +131,9 @@ class InxDB {
                     reject(new Error('Add operation cannot be performed due to user errors.'));
                     return;
                 }
-                const getRequest = key ? objectStore.get(key) : objectStore.get(data === null || data === void 0 ? void 0 : data.id);
+                const getRequest = key
+                    ? objectStore.get(key)
+                    : (data === null || data === void 0 ? void 0 : data.id) ? objectStore.get(data === null || data === void 0 ? void 0 : data.id) : null;
                 getRequest === null || getRequest === void 0 ? void 0 : getRequest.addEventListener('success', (event) => {
                     const existingData = event.target.result;
                     if (existingData) {
@@ -248,18 +261,21 @@ class InxDB {
                     reject(new errors_1.CollectionNotSpecifiedError());
                     return;
                 }
-                if (!this.docSelectionCriteria) {
-                    reject(new errors_1.DocumentCriteriaError());
-                    return;
-                }
                 const objectStore = this.getObjectStore(this.collectionName, 'readwrite');
                 if (!objectStore) {
                     reject(new errors_1.CollectionNotFoundError(this.collectionName));
                     return;
                 }
-                const request = objectStore.delete(this.docSelectionCriteria);
+                let request;
+                if (this.docSelectionCriteria) {
+                    request = objectStore.delete(this.docSelectionCriteria);
+                }
+                else {
+                    request = objectStore.clear();
+                }
                 request.onsuccess = () => {
                     resolve();
+                    this.docSelectionCriteria = null; // Reset the docSelectionCriteria
                 };
                 request.onerror = (event) => {
                     reject(event.target.error);
