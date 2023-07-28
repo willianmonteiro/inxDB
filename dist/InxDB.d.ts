@@ -5,12 +5,13 @@
 export default class InxDB implements IInxDB {
     private dbName;
     private db;
+    private isOpen;
     private collectionName;
     private collectionSelected;
     private docSelectionCriteria;
     private userErrors;
+    private queue;
     constructor(dbName: string);
-    private initializeDB;
     private getObjectStore;
     private resetErrors;
     collection(collectionName: string): InxDB;
@@ -19,15 +20,12 @@ export default class InxDB implements IInxDB {
         keys: boolean;
     }): Promise<TData[]>;
     add<TData>(data: TData & {
-        id?: number;
-    }, key?: string): Promise<TData>;
+        id?: string | number;
+    }): Promise<TData>;
     update<TData>(docUpdates: TData): Promise<TData>;
     set<TData>(newDocument: (TData & {
-        id?: number;
-        _key?: string;
-    })[], options?: {
-        keys: boolean;
-    }): Promise<void>;
+        id?: string | number;
+    })[]): Promise<void>;
     delete(): Promise<void>;
 }
 export interface IInxDB {
@@ -38,13 +36,10 @@ export interface IInxDB {
     }): Promise<TData[]>;
     add<TData>(data: TData & {
         id?: string | number;
-    }, key?: string): Promise<TData>;
+    }): Promise<TData>;
     update<TData>(docUpdates: TData): Promise<TData>;
     set<TData>(newDocument: (TData & {
-        id?: number;
-        _key?: string;
-    })[], options?: {
-        keys?: boolean;
-    }): Promise<void>;
+        id?: string | number;
+    })[]): Promise<void>;
     delete(): Promise<void>;
 }

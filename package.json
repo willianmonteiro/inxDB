@@ -1,6 +1,6 @@
 {
   "name": "inxdb",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "IndexedDB wrapper for handling offline database operations.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -10,6 +10,9 @@
   },
   "author": "Willian Monteiro",
   "license": "MIT",
+  "repository": {
+    "url": "https://github.com/willianmonteiro/inxDB"
+  },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^5.61.0",
     "@typescript-eslint/parser": "^5.61.0",

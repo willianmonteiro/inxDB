@@ -11,9 +11,10 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-const collection_1 = require("./collection");
+const collections_1 = require("./collections");
+const docs_1 = require("./docs");
 const errors_1 = require("./errors");
-const initialization_1 = require("./initialization");
+const queue_1 = require("./queue");
 const logger_1 = require("./utils/logger");
 /**
  * IndexedDB wrapper for handling offline database operations.
@@ -23,10 +24,12 @@ class InxDB {
     constructor(dbName) {
         this.dbName = dbName;
         this.db = null;
+        this.isOpen = false;
         this.collectionName = null;
         this.collectionSelected = false;
         this.docSelectionCriteria = null;
         this.userErrors = [];
+        this.queue = new queue_1.default();
         this.collection = this.collection.bind(this);
         this.doc = this.doc.bind(this);
         this.get = this.get.bind(this);
@@ -34,13 +37,11 @@ class InxDB {
         this.update = this.update.bind(this);
         this.set = this.set.bind(this);
         this.delete = this.delete.bind(this);
-        this.initializeDB();
-    }
-    initializeDB() {
-        (0, initialization_1.initializeDB)(this);
     }
     getObjectStore(collectionName, mode = 'readwrite') {
-        return (0, collection_1.getCollection)(this, collectionName, mode);
+        return __awaiter(this, void 0, void 0, function* () {
+            return yield (0, collections_1.getCollection)(this, collectionName, mode);
+        });
     }
     resetErrors() {
         this.userErrors = [];
@@ -77,209 +78,215 @@ class InxDB {
     get(options = { keys: false }) {
         return __awaiter(this, void 0, void 0, function* () {
             return new Promise((resolve, reject) => {
-                if (!this.collectionName) {
-                    reject(new errors_1.CollectionNotSpecifiedError());
-                    return;
-                }
-                const objectStore = this.getObjectStore(this.collectionName, 'readonly');
-                if (!objectStore) {
-                    reject(new errors_1.CollectionNotFoundError());
-                    return;
-                }
-                let request;
-                // filter document by key
-                if ((this === null || this === void 0 ? void 0 : this.docSelectionCriteria) && ['string', 'number'].includes(typeof (this === null || this === void 0 ? void 0 : this.docSelectionCriteria))) {
-                    request = objectStore.get(this.docSelectionCriteria);
-                }
-                else {
-                    request = objectStore.getAll();
-                }
-                request.onsuccess = () => {
-                    let result = [];
-                    // filter by criteria
-                    if ((this === null || this === void 0 ? void 0 : this.docSelectionCriteria) && typeof (this === null || this === void 0 ? void 0 : this.docSelectionCriteria) === 'object') {
-                        result = request.result.filter((doc) => {
-                            // @ts-ignore
-                            return Object.entries(this.docSelectionCriteria).every(([key, value]) => (doc === null || doc === void 0 ? void 0 : doc[key]) === value);
-                        });
+                const transactionFn = () => __awaiter(this, void 0, void 0, function* () {
+                    if (!this.collectionName) {
+                        reject(new errors_1.CollectionNotSpecifiedError());
+                        return;
                     }
-                    result = options.keys ? result.map((data) => ({ key: data.key, data })) : result;
-                    resolve(result);
-                    this.docSelectionCriteria = null; // Reset the docSelectionCriteria
-                };
-                request.onerror = (event) => {
-                    reject(event.target.error);
-                };
+                    const objectStore = yield this.getObjectStore(this.collectionName, 'readonly');
+                    if (!objectStore) {
+                        reject(new errors_1.CollectionNotFoundError());
+                        return;
+                    }
+                    let request;
+                    // filter document by key
+                    if ((0, docs_1.isValidPrimitiveCriteria)(this === null || this === void 0 ? void 0 : this.docSelectionCriteria)) {
+                        request = objectStore.get(this.docSelectionCriteria);
+                    }
+                    else {
+                        request = objectStore.getAll();
+                    }
+                    request.onsuccess = () => {
+                        let result = [];
+                        // filter by criteria
+                        if ((0, docs_1.isObjectCriteria)(this === null || this === void 0 ? void 0 : this.docSelectionCriteria)) {
+                            result = request.result.filter((doc) => {
+                                return (0, docs_1.matchesNestedCriteria)(doc, this.docSelectionCriteria);
+                            });
+                        }
+                        else {
+                            result = request.result;
+                        }
+                        result = options.keys ? result.map((data) => ({ key: data.id, data })) : result;
+                        resolve(result);
+                        this.docSelectionCriteria = null; // Reset the docSelectionCriteria
+                    };
+                    request.onerror = (event) => {
+                        reject(event.target.error);
+                    };
+                });
+                this.queue.enqueue(transactionFn);
             });
         });
     }
-    add(data, key) {
+    add(data) {
         return __awaiter(this, void 0, void 0, function* () {
             return new Promise((resolve, reject) => {
-                if (!this.collectionName) {
-                    reject(new errors_1.CollectionNotSpecifiedError());
-                    return;
-                }
-                const objectStore = this.getObjectStore(this.collectionName);
-                if (!objectStore) {
-                    reject(new errors_1.CollectionNotFoundError());
-                    return;
-                }
-                // Check if there are any user errors
-                if (this.userErrors.length) {
-                    logger_1.default.error('Add operation cannot be performed due to user errors:', ...this.userErrors);
-                    reject(new Error('Add operation cannot be performed due to user errors.'));
-                    return;
-                }
-                const getRequest = key
-                    ? objectStore.get(key)
-                    : (data === null || data === void 0 ? void 0 : data.id) ? objectStore.get(data === null || data === void 0 ? void 0 : data.id) : null;
-                getRequest === null || getRequest === void 0 ? void 0 : getRequest.addEventListener('success', (event) => {
-                    const existingData = event.target.result;
-                    if (existingData) {
-                        // Key already exists, update the existing object
-                        const updateRequest = objectStore.put(data);
-                        updateRequest.onsuccess = () => {
-                            resolve(data);
-                        };
-                        updateRequest.onerror = (_event) => {
-                            reject(_event.target.error);
-                        };
+                const transactionFn = () => __awaiter(this, void 0, void 0, function* () {
+                    if (!this.collectionName) {
+                        reject(new errors_1.CollectionNotSpecifiedError());
+                        return;
                     }
-                    else {
-                        // Key doesn't exist, add the new object
-                        const addRequest = objectStore.add(data, key);
-                        addRequest.onsuccess = () => {
-                            resolve(data);
-                        };
-                        addRequest.onerror = (_event) => {
-                            reject(_event.target.error);
-                        };
+                    const objectStore = yield this.getObjectStore(this.collectionName);
+                    if (!objectStore) {
+                        reject(new errors_1.CollectionNotFoundError());
+                        return;
                     }
+                    // Check if there are any user errors
+                    if (this.userErrors.length) {
+                        logger_1.default.error('Add operation cannot be performed due to user errors:', ...this.userErrors);
+                        reject(new Error('Add operation cannot be performed due to user errors.'));
+                        return;
+                    }
+                    const getRequest = (data === null || data === void 0 ? void 0 : data.id) ? objectStore.get(data === null || data === void 0 ? void 0 : data.id) : null;
+                    getRequest === null || getRequest === void 0 ? void 0 : getRequest.addEventListener('success', (event) => {
+                        const existingData = event.target.result;
+                        if (existingData) {
+                            // Key already exists, update the existing object
+                            const updateRequest = objectStore.put(data);
+                            updateRequest.onsuccess = () => {
+                                resolve(data);
+                            };
+                            updateRequest.onerror = (_event) => {
+                                reject(_event.target.error);
+                            };
+                        }
+                        else {
+                            // Key doesn't exist, add the new object
+                            const addRequest = objectStore.add(data);
+                            addRequest.onsuccess = () => {
+                                resolve(data);
+                            };
+                            addRequest.onerror = (_event) => {
+                                reject(_event.target.error);
+                            };
+                        }
+                    });
+                    getRequest === null || getRequest === void 0 ? void 0 : getRequest.addEventListener('error', (event) => {
+                        reject(event.target.error);
+                    });
                 });
-                getRequest === null || getRequest === void 0 ? void 0 : getRequest.addEventListener('error', (event) => {
-                    reject(event.target.error);
-                });
+                this.queue.enqueue(transactionFn);
             });
         });
     }
     update(docUpdates) {
         return __awaiter(this, void 0, void 0, function* () {
             return new Promise((resolve, reject) => {
-                if (!this.collectionName) {
-                    reject(new errors_1.CollectionNotSpecifiedError());
-                    return;
-                }
-                if (!this.docSelectionCriteria) {
-                    reject(new errors_1.DocumentCriteriaError());
-                    return;
-                }
-                const objectStore = this.getObjectStore(this.collectionName);
-                if (!objectStore) {
-                    reject(new errors_1.CollectionNotFoundError(this.collectionName));
-                    return;
-                }
-                const request = objectStore.getAllKeys();
-                const updates = [];
-                request.onsuccess = () => {
-                    const keys = request.result;
-                    keys.forEach((key) => {
-                        const getRequest = objectStore.get(key);
-                        let updateRequest;
-                        getRequest.onsuccess = () => {
-                            const document = getRequest.result;
-                            const updatedDocument = Object.assign(Object.assign({}, document), docUpdates);
-                            updateRequest = objectStore.put(updatedDocument, key);
-                            updateRequest.onerror = (event) => {
+                const transactionFn = () => __awaiter(this, void 0, void 0, function* () {
+                    if (!this.collectionName) {
+                        reject(new errors_1.CollectionNotSpecifiedError());
+                        return;
+                    }
+                    if (!this.docSelectionCriteria) {
+                        reject(new errors_1.DocumentCriteriaError());
+                        return;
+                    }
+                    const objectStore = yield this.getObjectStore(this.collectionName);
+                    if (!objectStore) {
+                        reject(new errors_1.CollectionNotFoundError(this.collectionName));
+                        return;
+                    }
+                    const request = objectStore.getAllKeys();
+                    const updates = [];
+                    request.onsuccess = () => {
+                        const keys = request.result;
+                        keys.forEach((key) => {
+                            const getRequest = objectStore.get(key);
+                            let updateRequest;
+                            getRequest.onsuccess = () => {
+                                const document = getRequest.result;
+                                const updatedDocument = Object.assign(Object.assign({}, document), docUpdates);
+                                updateRequest = objectStore.put(updatedDocument, key);
+                                updateRequest.onerror = (event) => {
+                                    reject(event.target.error);
+                                };
+                            };
+                            getRequest.onerror = (event) => {
                                 reject(event.target.error);
                             };
-                        };
-                        getRequest.onerror = (event) => {
-                            reject(event.target.error);
-                        };
-                        updates.push(new Promise((innerResolve, innerReject) => {
-                            updateRequest.onsuccess = () => {
-                                innerResolve();
-                            };
-                            updateRequest.onerror = (event) => {
-                                innerReject(event.target.error);
-                            };
-                        }));
-                    });
-                    Promise.all(updates)
-                        .then(() => {
-                        resolve(docUpdates);
-                    })
-                        .catch((error) => {
-                        reject(error);
-                    });
-                };
-                request.onerror = (event) => {
-                    reject(event.target.error);
-                };
+                            updates.push(new Promise((innerResolve, innerReject) => {
+                                updateRequest.onsuccess = () => {
+                                    innerResolve();
+                                };
+                                updateRequest.onerror = (event) => {
+                                    innerReject(event.target.error);
+                                };
+                            }));
+                        });
+                        Promise.all(updates)
+                            .then(() => {
+                            resolve(docUpdates);
+                        })
+                            .catch((error) => {
+                            reject(error);
+                        });
+                    };
+                    request.onerror = (event) => {
+                        reject(event.target.error);
+                    };
+                });
+                this.queue.enqueue(transactionFn);
             });
         });
     }
-    set(newDocument, options = { keys: false }) {
+    set(newDocument) {
         return __awaiter(this, void 0, void 0, function* () {
             return new Promise((resolve, reject) => {
-                if (!this.collectionName) {
-                    reject(new errors_1.CollectionNotSpecifiedError());
-                    return;
-                }
-                const objectStore = this.getObjectStore(this.collectionName);
-                if (!objectStore) {
-                    reject(new errors_1.CollectionNotFoundError(this.collectionName));
-                    return;
-                }
-                const clearRequest = objectStore.clear();
-                clearRequest.onsuccess = () => {
-                    if (options.keys) {
-                        newDocument.forEach((doc) => {
-                            const key = doc._key;
-                            delete doc._key;
-                            objectStore.add(doc, key);
-                        });
+                const transactionFn = () => __awaiter(this, void 0, void 0, function* () {
+                    if (!this.collectionName) {
+                        reject(new errors_1.CollectionNotSpecifiedError());
+                        return;
                     }
-                    else {
+                    const objectStore = yield this.getObjectStore(this.collectionName);
+                    if (!objectStore) {
+                        reject(new errors_1.CollectionNotFoundError(this.collectionName));
+                        return;
+                    }
+                    const clearRequest = objectStore.clear();
+                    clearRequest.onsuccess = () => {
                         newDocument.forEach((doc) => {
                             objectStore.add(doc);
                         });
-                    }
-                    resolve();
-                };
-                clearRequest.onerror = (event) => {
-                    reject(event.target.error);
-                };
+                        resolve();
+                    };
+                    clearRequest.onerror = (event) => {
+                        reject(event.target.error);
+                    };
+                });
+                this.queue.enqueue(transactionFn);
             });
         });
     }
     delete() {
         return __awaiter(this, void 0, void 0, function* () {
             return new Promise((resolve, reject) => {
-                if (!this.collectionName) {
-                    reject(new errors_1.CollectionNotSpecifiedError());
-                    return;
-                }
-                const objectStore = this.getObjectStore(this.collectionName, 'readwrite');
-                if (!objectStore) {
-                    reject(new errors_1.CollectionNotFoundError(this.collectionName));
-                    return;
-                }
-                let request;
-                if (this.docSelectionCriteria) {
-                    request = objectStore.delete(this.docSelectionCriteria);
-                }
-                else {
-                    request = objectStore.clear();
-                }
-                request.onsuccess = () => {
-                    resolve();
-                    this.docSelectionCriteria = null; // Reset the docSelectionCriteria
-                };
-                request.onerror = (event) => {
-                    reject(event.target.error);
-                };
+                const transactionFn = () => __awaiter(this, void 0, void 0, function* () {
+                    if (!this.collectionName) {
+                        reject(new errors_1.CollectionNotSpecifiedError());
+                        return;
+                    }
+                    const objectStore = yield this.getObjectStore(this.collectionName, 'readwrite');
+                    if (!objectStore) {
+                        reject(new errors_1.CollectionNotFoundError(this.collectionName));
+                        return;
+                    }
+                    let request;
+                    if (this.docSelectionCriteria) {
+                        request = objectStore.delete(this.docSelectionCriteria);
+                    }
+                    else {
+                        request = objectStore.clear();
+                    }
+                    request.onsuccess = () => {
+                        resolve();
+                        this.docSelectionCriteria = null; // Reset the docSelectionCriteria
+                    };
+                    request.onerror = (event) => {
+                        reject(event.target.error);
+                    };
+                });
+                this.queue.enqueue(transactionFn);
             });
         });
     }
