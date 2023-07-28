@@ -1,9 +1,9 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment */
 /* eslint-disable max-lines */
 
-import { getCollection } from './collection';
+import { getCollection } from './collections';
+import { isObjectCriteria, isValidPrimitiveCriteria, matchesNestedCriteria } from './docs';
 import { CollectionNotSpecifiedError, CollectionNotFoundError, DocumentCriteriaError } from './errors';
-import { initializeDB } from './initialization';
 import TransactionQueue from './queue';
 import logger from './utils/logger';
 
@@ -16,6 +16,8 @@ export default class InxDB implements IInxDB {
 
 	private db: IDBDatabase | null;
 
+	private isOpen: boolean;
+
 	private collectionName: string | null;
 
 	private collectionSelected: boolean;
@@ -27,16 +29,14 @@ export default class InxDB implements IInxDB {
 	private queue: TransactionQueue;
 
 	constructor(dbName: string) {
-		console.log('CONSTRUCTOR', dbName);
 		this.dbName = dbName;
 		this.db = null;
+		this.isOpen = false;
 		this.collectionName = null;
 		this.collectionSelected = false;
 		this.docSelectionCriteria = null;
 		this.userErrors = [];
-
 		this.queue = new TransactionQueue();
-
 		this.collection = this.collection.bind(this);
 		this.doc = this.doc.bind(this);
 		this.get = this.get.bind(this);
@@ -44,19 +44,10 @@ export default class InxDB implements IInxDB {
 		this.update = this.update.bind(this);
 		this.set = this.set.bind(this);
 		this.delete = this.delete.bind(this);
-
-		this.initializeDB();
 	}
 
-	private initializeDB(): void {
-		const transactionFn = (): void => {
-			initializeDB(this);
-		};
-		this.queue.enqueue(transactionFn);
-	}
-
-	private getObjectStore(collectionName: string, mode: IDBTransactionMode = 'readwrite'): IDBObjectStore | null {
-		return getCollection(this, collectionName, mode);
+	private async getObjectStore(collectionName: string, mode: IDBTransactionMode = 'readwrite'): Promise<IDBObjectStore | null> {
+		return await getCollection(this, collectionName, mode);
 	}
 
 	private resetErrors(): void {
@@ -94,12 +85,12 @@ export default class InxDB implements IInxDB {
 
 	public async get<TData>(options = { keys: false }): Promise<TData[]> {
 		return new Promise((resolve, reject) => {
-			const transactionFn = () => {
+			const transactionFn = async () => {
 				if (!this.collectionName) {
 					reject(new CollectionNotSpecifiedError());
 					return;
 				}
-				const objectStore: IDBObjectStore | null = this.getObjectStore(this.collectionName, 'readonly');
+				const objectStore: IDBObjectStore | null = await this.getObjectStore(this.collectionName, 'readonly');
 				if (!objectStore) {
 					reject(new CollectionNotFoundError());
 					return;
@@ -107,7 +98,7 @@ export default class InxDB implements IInxDB {
 
 				let request: IDBRequest;
 				// filter document by key
-				if (this?.docSelectionCriteria && ['string', 'number'].includes(typeof this?.docSelectionCriteria)) {
+				if (isValidPrimitiveCriteria(this?.docSelectionCriteria)) {
 					request = objectStore.get(this.docSelectionCriteria as IDBValidKey);
 				} else {
 					request = objectStore.getAll();
@@ -116,10 +107,9 @@ export default class InxDB implements IInxDB {
 				request.onsuccess = () => {
 					let result: any[] = [];
 					// filter by criteria
-					if (this?.docSelectionCriteria && typeof this?.docSelectionCriteria === 'object') {
+					if (isObjectCriteria(this?.docSelectionCriteria)) {
 						result = request.result.filter((doc: TData) => {
-							// @ts-ignore
-							return Object.entries(this.docSelectionCriteria).every(([ key, value ]) => doc?.[key] === value);
+							return matchesNestedCriteria(doc, this.docSelectionCriteria);
 						});
 					} else {
 						result = request.result;
@@ -140,13 +130,13 @@ export default class InxDB implements IInxDB {
 
 	public async add<TData>(data: TData & { id?: string | number }): Promise<TData> {
 		return new Promise((resolve, reject) => {
-			const transactionFn = () => {
+			const transactionFn = async () => {
 				if (!this.collectionName) {
 					reject(new CollectionNotSpecifiedError());
 					return;
 				}
 
-				const objectStore: IDBObjectStore | null = this.getObjectStore(this.collectionName);
+				const objectStore: IDBObjectStore | null = await this.getObjectStore(this.collectionName);
 				if (!objectStore) {
 					reject(new CollectionNotFoundError());
 					return;
@@ -198,7 +188,7 @@ export default class InxDB implements IInxDB {
 
 	public async update<TData>(docUpdates: TData): Promise<TData> {
 		return new Promise((resolve, reject) => {
-			const transactionFn = () => {
+			const transactionFn = async () => {
 				if (!this.collectionName) {
 					reject(new CollectionNotSpecifiedError());
 					return;
@@ -207,7 +197,7 @@ export default class InxDB implements IInxDB {
 					reject(new DocumentCriteriaError());
 					return;
 				}
-				const objectStore: IDBObjectStore | null = this.getObjectStore(this.collectionName);
+				const objectStore: IDBObjectStore | null = await this.getObjectStore(this.collectionName);
 				if (!objectStore) {
 					reject(new CollectionNotFoundError(this.collectionName));
 					return;
@@ -260,12 +250,12 @@ export default class InxDB implements IInxDB {
 
 	public async set<TData>(newDocument: (TData & { id?: string | number })[]): Promise<void> {
 		return new Promise((resolve, reject) => {
-			const transactionFn = () => {
+			const transactionFn = async () => {
 				if (!this.collectionName) {
 					reject(new CollectionNotSpecifiedError());
 					return;
 				}
-				const objectStore: IDBObjectStore | null = this.getObjectStore(this.collectionName);
+				const objectStore: IDBObjectStore | null = await this.getObjectStore(this.collectionName);
 				if (!objectStore) {
 					reject(new CollectionNotFoundError(this.collectionName));
 					return;
@@ -290,12 +280,12 @@ export default class InxDB implements IInxDB {
 
 	public async delete(): Promise<void> {
 		return new Promise((resolve, reject) => {
-			const transactionFn = () => {
+			const transactionFn = async () => {
 				if (!this.collectionName) {
 					reject(new CollectionNotSpecifiedError());
 					return;
 				}
-				const objectStore: IDBObjectStore | null = this.getObjectStore(this.collectionName, 'readwrite');
+				const objectStore: IDBObjectStore | null = await this.getObjectStore(this.collectionName, 'readwrite');
 				if (!objectStore) {
 					reject(new CollectionNotFoundError(this.collectionName));
 					return;
