@@ -1,12 +1,7 @@
-declare const logger: {
-    baseStyle: string;
-    colors: {
-        log: string;
-        error: string;
-        warn: string;
-    };
-    log(...messages: (string | DOMException | null)[]): void;
-    error(...messages: (string | DOMException | null)[]): void;
-    warn(...messages: (string | DOMException | null)[]): void;
-};
-export default logger;
+export default class Logger {
+    static debugMode: boolean;
+    static setDebugMode(value: boolean): void;
+    static log(...args: (string | DOMException | null)[]): void;
+    static error(...args: (string | DOMException | null)[]): void;
+    static warn(...args: (string | DOMException | null)[]): void;
+}

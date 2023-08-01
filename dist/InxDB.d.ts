@@ -12,7 +12,12 @@ export default class InxDB implements IInxDB {
     private userErrors;
     private queue;
     constructor(dbName: string);
-    private getObjectStore;
+    static isDebugMode(): boolean;
+    static setDebugMode(active: boolean): void;
+    getCollectionName(): string | null;
+    isCollectionSelected(): boolean;
+    getDocSelectionCriteria(): string | object | null;
+    resetDocSelectionCriteria(): void;
     private resetErrors;
     collection(collectionName: string): InxDB;
     doc(docSelectionCriteria: string | object): InxDB;
@@ -22,7 +27,7 @@ export default class InxDB implements IInxDB {
     add<TData>(data: TData & {
         id?: string | number;
     }): Promise<TData>;
-    update<TData>(docUpdates: TData): Promise<TData>;
+    update<TData>(docUpdates: Partial<TData>): Promise<TData>;
     set<TData>(newDocument: (TData & {
         id?: string | number;
     })[]): Promise<void>;
