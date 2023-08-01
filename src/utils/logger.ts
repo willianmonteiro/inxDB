@@ -1,28 +1,39 @@
 /* eslint-disable no-console */
-const logger = {
-	baseStyle: `
-    padding: 2px 5px;
-    background-color: #124F5C;
-    border-radius: 4px;
-    color: white;
-  `,
-	colors: {
-		log: '#124F5C',
-		error: '#ed2939',
-		warn: '#f39c12'
-	},
-	log(...messages: (string | DOMException | null)[]) {
-		const style = `${logger.baseStyle} background-color: ${logger.colors.log}`;
-		console.log('%cInxDB', style, ...messages);
-	},
-	error(...messages: (string | DOMException | null)[]) {
-		const style = `${logger.baseStyle} background-color: ${logger.colors.error}`;
-		console.error('%cInxDB', style, ...messages);
-	},
-	warn(...messages: (string | DOMException | null)[]) {
-		const style = `${logger.baseStyle} background-color: ${logger.colors.warn}`;
-		console.warn('%cInxDB', style, ...messages);
-	}
+const baseStyle = `
+  padding: 2px 5px;
+  background-color: #124F5C;
+  border-radius: 4px;
+  color: white;
+`;
+
+const colors = {
+	log: '#124F5C',
+	error: '#ed2939',
+	warn: '#f39c12'
 };
 
-export default logger;
+export default class Logger {
+	static debugMode = false;
+
+	static setDebugMode(value: boolean) {
+		Logger.debugMode = value;
+	}
+
+	static log(...args: (string | DOMException | null)[]) {
+		if (!Logger.debugMode) return;
+		const style = `${baseStyle} background-color: ${colors.log}`;
+		console.log('%cInxDB', style, ...args);
+	}
+
+	static error(...args: (string | DOMException | null)[]) {
+		if (!Logger.debugMode) return;
+		const style = `${baseStyle} background-color: ${colors.error}`;
+		console.error('%cInxDB', style, ...args);
+	}
+
+	static warn(...args: (string | DOMException | null)[]) {
+		if (!Logger.debugMode) return;
+		const style = `${baseStyle} background-color: ${colors.warn}`;
+		console.warn('%cInxDB', style, ...args);
+	}
+}

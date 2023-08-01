@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment */
 import { connectToDatabase } from '../opendb';
 import InxDB from '../inxdb';
-import logger from '../utils/logger';
+import Logger from '../utils/logger';
 import { createCollection } from './create-collection';
 
 export async function getCollection(instance: InxDB, collectionName: string, mode: IDBTransactionMode = 'readwrite'): Promise<IDBObjectStore | null> {
@@ -23,7 +23,7 @@ export async function getCollection(instance: InxDB, collectionName: string, mod
 				return transaction.objectStore(collectionName);
 			}
 		}
-		logger.error(`[get-collection]: ${collectionName} - ${error}`);
+		Logger.error(`[get-collection]: ${collectionName} - ${error}`);
 		return null;
 	}
 }
