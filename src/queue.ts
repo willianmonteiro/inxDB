@@ -1,27 +1,17 @@
-import logger from './utils/logger';
+import Logger from './utils/logger';
 
-export default class TransactionQueue implements ITransactionQueue {
-	private queue: TransactionFunction[]; // Queue to hold transaction functions
-	private isProcessing: boolean; // Flag to track if the queue is currently being processed
+export default class TransactionQueue {
+	private queue: ITransactionFunctionQueue<any>[] = [];
+	private isProcessing = false;
 
-	constructor() {
-		this.queue = [];
-		this.isProcessing = false;
-	}
-
-	public async enqueue(transactionFn: TransactionFunction): Promise<void> {
-		await new Promise<void>((resolve, reject) => {
-			const wrappedTransactionFn = async () => {
-				try {
-					await transactionFn();
-					resolve();
-				} catch (error) {
-					reject(error);
-				}
-				this.processQueue(); // Start processing the next transaction after the current one is done
-			};
-
-			this.queue.push(wrappedTransactionFn);
+	public enqueue<T>(transactionFn: () => Promise<T>, transactionKey?: string): Promise<T> {
+		return new Promise<T>((resolve, reject) => {
+			this.queue.push({
+				transactionFn,
+				resolve,
+				reject,
+				transactionKey,
+			});
 
 			if (!this.isProcessing) {
 				this.processQueue();
@@ -30,29 +20,32 @@ export default class TransactionQueue implements ITransactionQueue {
 	}
 
 	private async processQueue(): Promise<void> {
-		if (this.isProcessing || this.queue.length === 0) {
+		if (this.queue.length === 0) {
+			this.isProcessing = false;
 			return;
 		}
 
 		this.isProcessing = true;
-
+		const nextTransaction = this.queue.shift()!;
 		try {
-			while (this.queue.length > 0) {
-				const transactionFn = this.queue.shift();
-				if (transactionFn) {
-					await transactionFn();
-				}
-			}
+			Logger.log(`[TransactionQueue]: Processing transaction with key "${nextTransaction.transactionKey}"`);
+			const result = await nextTransaction.transactionFn();
+			nextTransaction.resolve(result);
+			Logger.log(`[TransactionQueue]: Transaction with key "${nextTransaction.transactionKey}" completed successfully.`);
 		} catch (error) {
-			logger.error('[queue]: Error while executing operation:' + error);
-		} finally {
-			this.isProcessing = false;
+			nextTransaction.reject(error);
+			Logger.error(`[TransactionQueue]: Error in transaction with key "${nextTransaction.transactionKey}": ${error}`);
 		}
+
+		this.processQueue();
 	}
 }
 
-type TransactionFunction = () => void;
-
-interface ITransactionQueue {
-  enqueue(transactionFn: TransactionFunction): void;
+export interface ITransactionFunctionQueue<T> {
+  transactionFn: TTransactionFunction<T>;
+  resolve: (value: T | PromiseLike<T>) => void;
+  reject: (reason?: any) => void;
+  transactionKey?: string;
 }
+
+export type TTransactionFunction<T> = () => Promise<T>;

@@ -1,11 +1,6 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-/* eslint-disable max-lines */
-
-import { getCollection } from './collections';
-import { isObjectCriteria, isValidPrimitiveCriteria, matchesNestedCriteria } from './docs';
-import { CollectionNotSpecifiedError, CollectionNotFoundError, DocumentCriteriaError } from './errors';
-import TransactionQueue from './queue';
-import logger from './utils/logger';
+import { addTransactionFn, deleteTransactionFn, getTransactionFn, setTransactionFn, updateTransactionFn } from './transactions';
+import TransactionQueue, { TTransactionFunction } from './queue';
+import Logger from './utils/logger';
 
 /**
  * IndexedDB wrapper for handling offline database operations.
@@ -13,19 +8,12 @@ import logger from './utils/logger';
  */
 export default class InxDB implements IInxDB {
 	private dbName: string;
-
 	private db: IDBDatabase | null;
-
 	private isOpen: boolean;
-
 	private collectionName: string | null;
-
 	private collectionSelected: boolean;
-
 	private docSelectionCriteria: string | object | null;
-
 	private userErrors: string[];
-
 	private queue: TransactionQueue;
 
 	constructor(dbName: string) {
@@ -46,8 +34,28 @@ export default class InxDB implements IInxDB {
 		this.delete = this.delete.bind(this);
 	}
 
-	private async getObjectStore(collectionName: string, mode: IDBTransactionMode = 'readwrite'): Promise<IDBObjectStore | null> {
-		return await getCollection(this, collectionName, mode);
+	static isDebugMode(): boolean {
+		return Logger.debugMode;
+	}
+
+	static setDebugMode(active: boolean) {
+		Logger.setDebugMode(active);
+	}
+	
+	public getCollectionName(): string | null {
+		return this.collectionName;
+	}
+	
+	public isCollectionSelected(): boolean {
+		return this.collectionSelected;
+	}
+	
+	public getDocSelectionCriteria(): string | object | null {
+		return this.docSelectionCriteria;
+	}
+
+	public resetDocSelectionCriteria(): void {
+		this.docSelectionCriteria = null;
 	}
 
 	private resetErrors(): void {
@@ -84,233 +92,32 @@ export default class InxDB implements IInxDB {
 	}
 
 	public async get<TData>(options = { keys: false }): Promise<TData[]> {
-		return new Promise((resolve, reject) => {
-			const transactionFn = async () => {
-				if (!this.collectionName) {
-					reject(new CollectionNotSpecifiedError());
-					return;
-				}
-				const objectStore: IDBObjectStore | null = await this.getObjectStore(this.collectionName, 'readonly');
-				if (!objectStore) {
-					reject(new CollectionNotFoundError());
-					return;
-				}
-
-				let request: IDBRequest;
-				// filter document by key
-				if (isValidPrimitiveCriteria(this?.docSelectionCriteria)) {
-					request = objectStore.get(this.docSelectionCriteria as IDBValidKey);
-				} else {
-					request = objectStore.getAll();
-				}
-
-				request.onsuccess = () => {
-					let result: any[] = [];
-					// filter by criteria
-					if (isObjectCriteria(this?.docSelectionCriteria)) {
-						result = request.result.filter((doc: TData) => {
-							return matchesNestedCriteria(doc, this.docSelectionCriteria);
-						});
-					} else {
-						result = request.result;
-					}
-					result = options.keys ? result.map((data: any) => ({ key: data.id, data })) : result;
-					resolve(result);
-					this.docSelectionCriteria = null; // Reset the docSelectionCriteria
-				};
-
-				request.onerror = (event: Event) => {
-					reject((event.target as IDBRequest).error);
-				};
-			};
-
-			this.queue.enqueue(transactionFn);
-		});
+		const transactionFn = getTransactionFn.bind(this, options) as TTransactionFunction<TData[]>;
+		return this.queue.enqueue(transactionFn, `[get]: ${this.collectionName}`);
 	}
 
 	public async add<TData>(data: TData & { id?: string | number }): Promise<TData> {
-		return new Promise((resolve, reject) => {
-			const transactionFn = async () => {
-				if (!this.collectionName) {
-					reject(new CollectionNotSpecifiedError());
-					return;
-				}
-
-				const objectStore: IDBObjectStore | null = await this.getObjectStore(this.collectionName);
-				if (!objectStore) {
-					reject(new CollectionNotFoundError());
-					return;
-				}
-
-				// Check if there are any user errors
-				if (this.userErrors.length) {
-					logger.error('Add operation cannot be performed due to user errors:', ...this.userErrors);
-					reject(new Error('Add operation cannot be performed due to user errors.'));
-					return;
-				}
-
-				const getRequest: IDBRequest | null = data?.id ? objectStore.get(data?.id) : null;
-
-				getRequest?.addEventListener('success', (event: Event) => {
-					const existingData: object | undefined = (event.target as IDBRequest).result;
-					if (existingData) {
-						// Key already exists, update the existing object
-						const updateRequest: IDBRequest = objectStore.put(data);
-
-						updateRequest.onsuccess = () => {
-							resolve(data);
-						};
-
-						updateRequest.onerror = (_event: Event) => {
-							reject((_event.target as IDBRequest).error);
-						};
-					} else {
-						// Key doesn't exist, add the new object
-						const addRequest: IDBRequest<IDBValidKey> = objectStore.add(data);
-
-						addRequest.onsuccess = () => {
-							resolve(data);
-						};
-
-						addRequest.onerror = (_event: Event) => {
-							reject((_event.target as IDBRequest).error);
-						};
-					}
-				});
-
-				getRequest?.addEventListener('error', (event: Event) => {
-					reject((event.target as IDBRequest).error);
-				});
-			};
-			this.queue.enqueue(transactionFn);
-		});
+		if (this.userErrors.length) {
+			Logger.error('Add operation cannot be performed due to user errors:', ...this.userErrors);
+			throw new Error('Add operation cannot be performed due to user errors.');
+		}
+		const transactionFn = addTransactionFn.bind(this, data) as TTransactionFunction<TData>;		
+		return this.queue.enqueue(transactionFn, `[add]: ${this.collectionName}`);
 	}
 
-	public async update<TData>(docUpdates: TData): Promise<TData> {
-		return new Promise((resolve, reject) => {
-			const transactionFn = async () => {
-				if (!this.collectionName) {
-					reject(new CollectionNotSpecifiedError());
-					return;
-				}
-				if (!this.docSelectionCriteria) {
-					reject(new DocumentCriteriaError());
-					return;
-				}
-				const objectStore: IDBObjectStore | null = await this.getObjectStore(this.collectionName);
-				if (!objectStore) {
-					reject(new CollectionNotFoundError(this.collectionName));
-					return;
-				}
-				const request: IDBRequest = objectStore.getAllKeys();
-				const updates: Promise<void>[] = [];
-				request.onsuccess = () => {
-					const keys: any[] = request.result;
-					keys.forEach((key: any) => {
-						const getRequest: IDBRequest = objectStore.get(key);
-						let updateRequest: IDBRequest;
-						getRequest.onsuccess = () => {
-							const document: TData = getRequest.result;
-							const updatedDocument: TData = { ...document, ...docUpdates };
-							updateRequest = objectStore.put(updatedDocument, key);
-							updateRequest.onerror = (event: Event) => {
-								reject((event.target as IDBRequest).error);
-							};
-						};
-						getRequest.onerror = (event: Event) => {
-							reject((event.target as IDBRequest).error);
-						};
-						updates.push(new Promise((innerResolve, innerReject) => {
-							updateRequest.onsuccess = () => {
-								innerResolve();
-							};
-
-							updateRequest.onerror = (event: Event) => {
-								innerReject((event.target as IDBRequest).error);
-							};
-						}));
-					});
-
-					Promise.all(updates)
-						.then(() => {
-							resolve(docUpdates);
-						})
-						.catch((error) => {
-							reject(error);
-						});
-				};
-
-				request.onerror = (event: Event) => {
-					reject((event.target as IDBRequest).error);
-				};
-			};
-			this.queue.enqueue(transactionFn);
-		});
+	public async update<TData>(docUpdates: Partial<TData>): Promise<TData> {
+		const transactionFn = updateTransactionFn.bind(this, docUpdates) as TTransactionFunction<TData>;		
+		return this.queue.enqueue(transactionFn, `[update]: ${this.collectionName}`);
 	}
 
 	public async set<TData>(newDocument: (TData & { id?: string | number })[]): Promise<void> {
-		return new Promise((resolve, reject) => {
-			const transactionFn = async () => {
-				if (!this.collectionName) {
-					reject(new CollectionNotSpecifiedError());
-					return;
-				}
-				const objectStore: IDBObjectStore | null = await this.getObjectStore(this.collectionName);
-				if (!objectStore) {
-					reject(new CollectionNotFoundError(this.collectionName));
-					return;
-				}
-
-				const clearRequest: IDBRequest = objectStore.clear();
-
-				clearRequest.onsuccess = () => {
-					newDocument.forEach((doc: any) => {
-						objectStore.add(doc);
-					});
-					resolve();
-				};
-
-				clearRequest.onerror = (event: Event) => {
-					reject((event.target as IDBRequest).error);
-				};
-			};
-			this.queue.enqueue(transactionFn);
-		});
+		const transactionFn = setTransactionFn.bind(this, newDocument) as TTransactionFunction<void>;
+		return this.queue.enqueue(transactionFn, `[set]: ${this.collectionName}`);
 	}
 
 	public async delete(): Promise<void> {
-		return new Promise((resolve, reject) => {
-			const transactionFn = async () => {
-				if (!this.collectionName) {
-					reject(new CollectionNotSpecifiedError());
-					return;
-				}
-				const objectStore: IDBObjectStore | null = await this.getObjectStore(this.collectionName, 'readwrite');
-				if (!objectStore) {
-					reject(new CollectionNotFoundError(this.collectionName));
-					return;
-				}
-
-				let request: IDBRequest;
-
-				if (this.docSelectionCriteria) {
-					request = objectStore.delete(this.docSelectionCriteria as IDBValidKey);
-				} else {
-					request = objectStore.clear();
-				}
-
-				request.onsuccess = () => {
-					resolve();
-					this.docSelectionCriteria = null; // Reset the docSelectionCriteria
-				};
-
-				request.onerror = (event: Event) => {
-					reject((event.target as IDBRequest).error);
-				};
-			};
-
-			this.queue.enqueue(transactionFn);
-		});
+		const transactionFn = deleteTransactionFn.bind(this) as TTransactionFunction<void>;
+		return this.queue.enqueue(transactionFn, `[delete]: ${this.collectionName}`);
 	}
 }
 
