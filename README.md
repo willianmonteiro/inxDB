@@ -1,5 +1,8 @@
 # InxDB
 
+[![npm version](https://img.shields.io/npm/v/inxdb)](https://www.npmjs.com/package/inxdb)
+[![license](https://img.shields.io/npm/l/inxdb)](licence)
+
 A promise-based IndexedDB wrapper with a document-store API.
 
 IndexedDB is the only database built into every browser, but its API is event-driven, verbose, and easy to get wrong: manual version management, transaction lifecycles, request callbacks. InxDB hides all of that behind a small, typed, Firestore-style API — you work with collections and documents, and schema management happens automatically.
