@@ -16,7 +16,7 @@ await db.collection('users').add({ id: 'u1', name: 'Ana', age: 30 });
 const user = await db.collection('users').doc('u1').get();
 ```
 
-> **Try it live**: the [InxDB Playground](https://github.com/willianmonteiro/inxDB-playground) runs the whole API against a real IndexedDB in your browser — preset examples, an editor, and a live view of the database state.
+> **Try it live**: the [InxDB Playground](https://willianmonteiro.github.io/inxDB-playground/) runs the whole API against a real IndexedDB in your browser — preset examples, an editor, and a live view of the database state ([source](https://github.com/willianmonteiro/inxDB-playground)).
 
 ## Why InxDB
 
