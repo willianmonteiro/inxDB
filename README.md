@@ -13,6 +13,8 @@ await db.collection('users').add({ id: 'u1', name: 'Ana', age: 30 });
 const user = await db.collection('users').doc('u1').get();
 ```
 
+> **Try it live**: the [InxDB Playground](https://github.com/willianmonteiro/inxDB-playground) runs the whole API against a real IndexedDB in your browser — preset examples, an editor, and a live view of the database state.
+
 ## Why InxDB
 
 - **No schema ceremony** — collections (object stores) are created on demand; version upgrades are handled internally.
