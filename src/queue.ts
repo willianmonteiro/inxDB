@@ -1,51 +1,22 @@
 import Logger from './utils/logger';
 
+/**
+ * Serializes database operations. Creating a missing object store requires
+ * closing and reopening the connection with a version bump, so operations
+ * must never interleave.
+ */
 export default class TransactionQueue {
-	private queue: ITransactionFunctionQueue<any>[] = [];
-	private isProcessing = false;
+	private tail: Promise<unknown> = Promise.resolve();
 
-	public enqueue<T>(transactionFn: () => Promise<T>, transactionKey?: string): Promise<T> {
-		return new Promise<T>((resolve, reject) => {
-			this.queue.push({
-				transactionFn,
-				resolve,
-				reject,
-				transactionKey,
-			});
-
-			if (!this.isProcessing) {
-				this.processQueue();
-			}
+	enqueue<T>(operation: () => Promise<T>, label = 'operation'): Promise<T> {
+		const result = this.tail.then(() => {
+			Logger.log(`[queue] ${label}`);
+			return operation();
 		});
-	}
-
-	private async processQueue(): Promise<void> {
-		if (this.queue.length === 0) {
-			this.isProcessing = false;
-			return;
-		}
-
-		this.isProcessing = true;
-		const nextTransaction = this.queue.shift()!;
-		try {
-			Logger.log(`[TransactionQueue]: Processing transaction with key "${nextTransaction.transactionKey}"`);
-			const result = await nextTransaction.transactionFn();
-			nextTransaction.resolve(result);
-			Logger.log(`[TransactionQueue]: Transaction with key "${nextTransaction.transactionKey}" completed successfully.`);
-		} catch (error) {
-			nextTransaction.reject(error);
-			Logger.error(`[TransactionQueue]: Error in transaction with key "${nextTransaction.transactionKey}": ${error}`);
-		}
-
-		this.processQueue();
+		this.tail = result.then(
+			() => undefined,
+			(error) => Logger.error(`[queue] ${label} failed:`, error),
+		);
+		return result;
 	}
 }
-
-export interface ITransactionFunctionQueue<T> {
-  transactionFn: TTransactionFunction<T>;
-  resolve: (value: T | PromiseLike<T>) => void;
-  reject: (reason?: any) => void;
-  transactionKey?: string;
-}
-
-export type TTransactionFunction<T> = () => Promise<T>;

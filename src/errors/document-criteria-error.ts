@@ -1,7 +1,7 @@
-export class DocumentCriteriaError extends Error {
-	constructor(message = 'Document selection criteria is not specified.') {
-		super(message);
-		this.name = 'DocumentCriteriaError';
-		Object.setPrototypeOf(this, DocumentCriteriaError.prototype);
+import { InxDBError } from './inxdb-error';
+
+export class DocumentCriteriaError extends InxDBError {
+	constructor() {
+		super('Document selector must be a key (string or number) or a non-empty criteria object.');
 	}
 }
