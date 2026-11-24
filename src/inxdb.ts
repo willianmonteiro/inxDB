@@ -1,7 +1,7 @@
 import Collection from './collection';
 import Connection from './connection';
 import TransactionQueue from './queue';
-import { CollectionNotSpecifiedError, DatabaseBlockedError } from './errors';
+import { CollectionNotSpecifiedError } from './errors';
 import { AnyDocument, DocumentData } from './types';
 import Logger from './utils/logger';
 
@@ -50,7 +50,9 @@ export default class InxDB {
 				const request = indexedDB.deleteDatabase(this.name);
 				request.onsuccess = () => resolve();
 				request.onerror = () => reject(request.error);
-				request.onblocked = () => reject(new DatabaseBlockedError());
+				// deleteDatabase cannot be cancelled. Keep the promise pending rather
+				// than reporting failure while the browser will still delete later.
+				request.onblocked = () => Logger.warn(`Deletion of "${this.name}" is waiting for other connections to close.`);
 			});
 		}, `[destroy] ${this.name}`);
 	}

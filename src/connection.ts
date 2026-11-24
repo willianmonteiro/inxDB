@@ -14,12 +14,21 @@ export default class Connection {
 	 * reopens the connection.
 	 */
 	async acquireStore(storeName: string, mode: IDBTransactionMode): Promise<IDBObjectStore> {
-		let db = await this.acquire();
-		if (!db.objectStoreNames.contains(storeName)) {
-			this.close();
-			db = await this.open(db.version + 1, storeName);
+		for (;;) {
+			let db = await this.acquire();
+			try {
+				if (!db.objectStoreNames.contains(storeName)) {
+					this.close();
+					db = await this.open(db.version + 1, storeName);
+					// Another instance may have won this version with a different store.
+					if (!db.objectStoreNames.contains(storeName)) continue;
+				}
+				return db.transaction(storeName, mode).objectStore(storeName);
+			} catch (error) {
+				if (!(error instanceof DOMException) || !['VersionError', 'InvalidStateError'].includes(error.name)) throw error;
+				this.close();
+			}
 		}
-		return db.transaction(storeName, mode).objectStore(storeName);
 	}
 
 	close(): void {
@@ -29,41 +38,48 @@ export default class Connection {
 
 	private acquire(): Promise<IDBDatabase> {
 		if (this.db) return Promise.resolve(this.db);
-		if (!this.opening) this.opening = this.open();
+		if (!this.opening) {
+			const opening = this.open();
+			this.opening = opening;
+			const clear = () => { if (this.opening === opening) this.opening = null; };
+			opening.then(clear, clear);
+		}
 		return this.opening;
 	}
 
 	private open(version?: number, storeToCreate?: string): Promise<IDBDatabase> {
 		return new Promise((resolve, reject) => {
 			const request = indexedDB.open(this.dbName, version);
+			let abandoned = false;
 
 			request.onupgradeneeded = () => {
+				if (abandoned) { request.transaction?.abort(); return; }
 				if (storeToCreate && !request.result.objectStoreNames.contains(storeToCreate)) {
 					request.result.createObjectStore(storeToCreate, { keyPath: 'id' });
 				}
 			};
 
 			request.onblocked = () => {
-				this.opening = null;
+				abandoned = true;
 				reject(new DatabaseBlockedError());
 			};
 
 			request.onerror = () => {
-				this.opening = null;
 				reject(request.error);
 			};
 
 			request.onsuccess = () => {
 				const db = request.result;
-				this.opening = null;
+				if (abandoned) { db.close(); return; }
 				this.db = db;
 
 				db.onversionchange = () => {
 					Logger.warn(`Version change requested for "${this.dbName}"; closing connection.`);
-					this.close();
+					db.close();
+					if (this.db === db) this.db = null;
 				};
 				db.onclose = () => {
-					this.db = null;
+					if (this.db === db) this.db = null;
 				};
 
 				resolve(db);

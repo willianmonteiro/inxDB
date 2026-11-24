@@ -2,7 +2,7 @@ import Connection from './connection';
 import TransactionQueue from './queue';
 import { isDocumentKey, matchesCriteria } from './criteria';
 import { DocumentNotFoundError } from './errors';
-import { promisify, transactionDone } from './idb';
+import { promisify, writeTransaction } from './idb';
 import { DocumentData, DocumentSelector, WithId } from './types';
 
 export default class DocumentSelection<T extends DocumentData> {
@@ -27,14 +27,15 @@ export default class DocumentSelection<T extends DocumentData> {
 	update(changes: Partial<T>): Promise<WithId<T>> {
 		return this.queue.enqueue(async () => {
 			const store = await this.connection.acquireStore(this.collectionName, 'readwrite');
-			const existing = await this.find(store);
-			if (!existing) {
-				throw new DocumentNotFoundError(this.collectionName, this.selector);
-			}
-			const updated = { ...existing, ...changes, id: existing.id };
-			store.put(updated);
-			await transactionDone(store.transaction);
-			return updated;
+			return writeTransaction(store, async () => {
+				const existing = await this.find(store);
+				if (!existing) {
+					throw new DocumentNotFoundError(this.collectionName, this.selector);
+				}
+				const updated = { ...existing, ...changes, id: existing.id };
+				store.put(updated);
+				return updated;
+			});
 		}, this.label('update'));
 	}
 
@@ -42,13 +43,14 @@ export default class DocumentSelection<T extends DocumentData> {
 	delete(): Promise<void> {
 		return this.queue.enqueue(async () => {
 			const store = await this.connection.acquireStore(this.collectionName, 'readwrite');
-			if (isDocumentKey(this.selector)) {
-				store.delete(this.selector);
-			} else {
-				const existing = await this.find(store);
-				if (existing) store.delete(existing.id);
-			}
-			await transactionDone(store.transaction);
+			await writeTransaction(store, async () => {
+				if (isDocumentKey(this.selector)) {
+					store.delete(this.selector);
+				} else {
+					const existing = await this.find(store);
+					if (existing) store.delete(existing.id);
+				}
+			});
 		}, this.label('delete'));
 	}
 

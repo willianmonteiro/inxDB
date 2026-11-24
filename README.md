@@ -23,7 +23,7 @@ const user = await db.collection('users').doc('u1').get();
 - **No schema ceremony** — collections (object stores) are created on demand; version upgrades are handled internally.
 - **Promises everywhere** — every operation returns a promise that resolves when the data is durably committed.
 - **Typed** — full TypeScript generics: `db.collection<User>('users')` types every operation end to end.
-- **Safe by construction** — operations are serialized per database, and writes resolve only after the transaction commits.
+- **Safe writes** — operations are serialized per instance, writes resolve only after commit, and failed writes abort their transaction. Concurrent instances coordinate through IndexedDB transactions and retry schema-version races.
 - **Tiny** — no dependencies, tree-shakeable ESM (CJS also shipped).
 
 ## Installation
@@ -55,6 +55,8 @@ const db = new InxDB('my-app');
 | `InxDB.setDebugMode(on)` | `void` | Logs every internal operation to the console. |
 
 Documents are plain objects keyed by their `id` field (`string` or `number`). If you add a document without an `id`, InxDB generates a UUID for it.
+
+If another connection blocks `destroy()`, the promise remains pending until that connection closes and deletion completes. Close other tabs or raw IndexedDB connections using this database. Browser deletion requests cannot be cancelled; reporting rejection while deletion was still queued could otherwise lead to a later unexpected deletion. Subsequent operations on this instance wait for deletion to finish.
 
 ### `Collection<T>`
 
@@ -89,6 +91,8 @@ const bia = await users.add({ name: 'Bia', age: 25 }); // bia.id is a generated 
 #### `set(documents): Promise<WithId<T>[]>`
 
 Replaces the **entire collection contents** atomically — a clear plus all inserts in one transaction.
+
+If any document cannot be stored (for example, it contains a function or violates a unique index), the transaction is aborted and the previous collection remains intact. The next operation can still run normally.
 
 ```ts
 await users.set([
@@ -145,14 +149,14 @@ await users.doc('u1').delete();
 
 ### Errors
 
-All errors extend `InxDBError`, so a single `instanceof` check catches everything the library throws.
+Library validation errors extend `InxDBError`. Native IndexedDB failures, such as `DataCloneError`, `ConstraintError`, and quota failures, are propagated as their original errors.
 
 | Error | Thrown when |
 | --- | --- |
 | `CollectionNotSpecifiedError` | `collection()` is called with an empty or non-string name. |
 | `DocumentCriteriaError` | `doc()` is called with an invalid selector. |
 | `DocumentNotFoundError` | `update()` matches no document. |
-| `DatabaseBlockedError` | Another open connection (e.g. another tab) blocks an upgrade or deletion. |
+| `DatabaseBlockedError` | Another open connection blocks a schema upgrade. The rejected upgrade is aborted when the blocker closes. Blocked deletion stays pending instead. |
 
 ```ts
 import { InxDBError, DocumentNotFoundError } from 'inxdb';

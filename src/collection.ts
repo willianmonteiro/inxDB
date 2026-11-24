@@ -3,7 +3,7 @@ import DocumentSelection from './document-selection';
 import TransactionQueue from './queue';
 import { isDocumentKey, isValidCriteria } from './criteria';
 import { DocumentCriteriaError } from './errors';
-import { promisify, transactionDone } from './idb';
+import { promisify, writeTransaction } from './idb';
 import { generateId } from './utils/generate-id';
 import { DocumentData, DocumentSelector, WithId } from './types';
 
@@ -41,9 +41,10 @@ export default class Collection<T extends DocumentData> {
 		const record = withGeneratedId(document);
 		return this.queue.enqueue(async () => {
 			const store = await this.connection.acquireStore(this.name, 'readwrite');
-			store.put(record);
-			await transactionDone(store.transaction);
-			return record;
+			return writeTransaction(store, () => {
+				store.put(record);
+				return record;
+			});
 		}, `[add] ${this.name}`);
 	}
 
@@ -52,12 +53,13 @@ export default class Collection<T extends DocumentData> {
 		const records = documents.map(withGeneratedId);
 		return this.queue.enqueue(async () => {
 			const store = await this.connection.acquireStore(this.name, 'readwrite');
-			store.clear();
-			for (const record of records) {
-				store.put(record);
-			}
-			await transactionDone(store.transaction);
-			return records;
+			return writeTransaction(store, () => {
+				store.clear();
+				for (const record of records) {
+					store.put(record);
+				}
+				return records;
+			});
 		}, `[set] ${this.name}`);
 	}
 
@@ -65,8 +67,7 @@ export default class Collection<T extends DocumentData> {
 	delete(): Promise<void> {
 		return this.queue.enqueue(async () => {
 			const store = await this.connection.acquireStore(this.name, 'readwrite');
-			store.clear();
-			await transactionDone(store.transaction);
+			await writeTransaction(store, () => { store.clear(); });
 		}, `[delete] ${this.name}`);
 	}
 }
